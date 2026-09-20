@@ -10,6 +10,15 @@ export class JevProviderError extends Error {
     super(message);
   }
 }
+
+const OPENROUTER_DECISIONS = "https://openrouter.ai/api/alpha/decisions";
+
+function transportFor(key: string): "typesafe" | "openrouter" {
+  const provider = process.env.JEV_PROVIDER?.trim().toLowerCase();
+  if (provider === "openrouter" || provider === "typesafe") return provider;
+  return key.startsWith("sk-or-") ? "openrouter" : "typesafe";
+}
+
 /** Server/CLI transport. Keys stay out of model payloads and responses. */
 export async function serverJevTransport(
   value: unknown,
@@ -17,7 +26,10 @@ export async function serverJevTransport(
   override?: string | null,
 ) {
   const payload = validatePayload(value);
-  const key = override?.trim() || process.env.TYPESAFE_API_KEY?.trim();
+  const key =
+    override?.trim() ||
+    process.env.TYPESAFE_API_KEY?.trim() ||
+    process.env.OPENROUTER_API_KEY?.trim();
   if (
     override !== undefined &&
     override !== null &&
@@ -28,18 +40,31 @@ export async function serverJevTransport(
     throw new JevProviderError("Invalid API key override.", 400);
   if (!key)
     throw new JevProviderError(
-      "Set TYPESAFE_API_KEY on the server to run Jev.",
+      "Set TYPESAFE_API_KEY or OPENROUTER_API_KEY on the server to run Jev.",
       503,
     );
+  const provider = transportFor(key);
   try {
-    const upstream = await fetch("https://api.typesafe.ai/v1/systemone", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify(payload),
+    const upstream = await fetch(
+      provider === "openrouter"
+        ? OPENROUTER_DECISIONS
+        : "https://api.typesafe.ai/v1/systemone",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${key}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(
+          provider === "openrouter"
+            ? {
+                model: process.env.JEV_MODEL?.trim() || "typesafe/jev-1.13",
+                state: payload.state,
+                questions: payload.questions,
+              }
+            : payload,
+        ),
       signal: AbortSignal.any([
         ...(signal ? [signal] : []),
         AbortSignal.timeout(45000),
@@ -92,8 +117,12 @@ export async function serverJevTransport(
     return {
       ...data,
       _playgroundUsage: {
-        inputTokens: reportedTokens(data.usage?.input_tokens),
-        outputTokens: reportedTokens(data.usage?.output_tokens),
+        inputTokens: reportedTokens(
+          data.usage?.input_tokens ?? data.usage?.prompt_tokens,
+        ),
+        outputTokens: reportedTokens(
+          data.usage?.output_tokens ?? data.usage?.completion_tokens,
+        ),
         attempted: true,
         status: upstream.status,
         retryAt: null,

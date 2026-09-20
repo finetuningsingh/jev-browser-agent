@@ -11,7 +11,7 @@ async def main():
     asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, task.cancel)
     from browser_use import BrowserSession
     paths = glob.glob(os.path.expanduser('~/Library/Caches/ms-playwright/chromium-*/chrome-mac-*/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'))
-    browser = BrowserSession(headless=True, enable_default_extensions=False, user_data_dir=None, viewport={'width': int(sys.argv[1]) if len(sys.argv) > 1 else 1440, 'height': int(sys.argv[2]) if len(sys.argv) > 2 else 900}, executable_path=os.environ.get('LOCAL_BROWSER_EXECUTABLE') or (sorted(paths)[-1] if paths else None), allowed_domains=['https://www.newegg.com'])
+    browser = BrowserSession(headless=True, enable_default_extensions=False, user_data_dir=None, viewport={'width': int(sys.argv[1]) if len(sys.argv) > 1 else 1440, 'height': int(sys.argv[2]) if len(sys.argv) > 2 else 900}, executable_path=os.environ.get('LOCAL_BROWSER_EXECUTABLE') or (sorted(paths)[-1] if paths else None), allowed_domains=['https://www.newegg.com'], args=['--password-store=basic', '--use-mock-keychain'])
     try:
         await browser.start()
         while True:
